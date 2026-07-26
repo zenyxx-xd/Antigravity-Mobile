@@ -160,19 +160,17 @@ apt-get install -y --no-install-recommends matchbox-window-manager curl wget ca-
     libnss3 libnspr4 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 libatk1.0-0 libcups2 libatk-bridge2.0-0 \
     libgtk-3-0 libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri mesa-vulkan-drivers \
-    dbus-x11 gnome-keyring libsecret-1-0 x11-xserver-utils mesa-utils vulkan-tools >/dev/null 2>&1 || \
+    dbus dbus-x11 gnome-keyring libsecret-1-0 x11-xserver-utils >/dev/null 2>&1 || \
 apt-get install -y --no-install-recommends matchbox-window-manager curl wget ca-certificates tar \
     libnss3 libnspr4 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libatk1.0-0t64 libcups2t64 libatk-bridge2.0-0t64 \
     libgtk-3-0t64 libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri mesa-vulkan-drivers \
-    dbus-x11 gnome-keyring libsecret-1-0 x11-xserver-utils mesa-utils vulkan-tools >/dev/null 2>&1 || true
+    dbus dbus-x11 gnome-keyring libsecret-1-0 x11-xserver-utils >/dev/null 2>&1 || true
 
 info "Installing icon and emoji fonts..."
 apt-get install -y --no-install-recommends \
     fonts-noto-core \
     fonts-noto-color-emoji \
-    fonts-material-design-icons-iconfont \
-    fonts-font-awesome \
     fontconfig >/dev/null 2>&1 || true
 fc-cache -f >/dev/null 2>&1 || true
 
@@ -345,7 +343,10 @@ export ELECTRON_OZONE_PLATFORM_HINT=x11
 export GDK_BACKEND=x11
 export NO_AT_BRIDGE=1
 export XDG_RUNTIME_DIR=/tmp/runtime-root
-mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+# Ensure runtime & D-Bus directories exist to prevent connection log errors
+mkdir -p /var/run/dbus /run/dbus "$XDG_RUNTIME_DIR" 2>/dev/null || true
+touch /etc/drirc "$HOME/.drirc" 2>/dev/null || true
 
 # Initialize gnome-keyring-daemon (Passwordless login keyring)
 mkdir -p "$HOME/.local/share/keyrings"
@@ -362,7 +363,10 @@ if [ ! -f "$HOME/.local/share/keyrings/login.keyring" ]; then
     chmod 600 "$HOME/.local/share/keyrings/login.keyring" "$HOME/.local/share/keyrings/default"
 fi
 
-# Start D-Bus session if not running
+# Start D-Bus system and session services if not running
+if [ -x /etc/init.d/dbus ]; then
+    /etc/init.d/dbus start >/dev/null 2>&1 || true
+fi
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax)
     export DBUS_SESSION_BUS_ADDRESS
@@ -388,12 +392,12 @@ export MESA_LOADER_DRIVER_OVERRIDE=zink
 export TU_DEBUG=sysmem,noconform
 export ZINK_DESCRIPTORS=lazy
 export MESA_VK_WSI_PRESENT_MODE=mailbox
-export MESA_VK_IGNORE_EXTENSIONS="VK_KHR_calibrated_timestamps VK_EXT_calibrated_timestamps"
+export MESA_VK_IGNORE_EXTENSIONS="VK_EXT_calibrated_timestamps,VK_KHR_calibrated_timestamps"
 export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
 export MESA_GLES_VERSION_OVERRIDE=3.2
 export MESA_GLTHREAD=true
 export vblank_mode=0
-GPU_ARGS="--ignore-gpu-blocklist --disable-vulkan --enable-gpu-rasterization --enable-oop-rasterization --canvas-oop-rasterization --gpu-rasterization-msaa-sample-count=0 --enable-zero-copy --use-gl=angle --enable-webgl --enable-accelerated-2d-canvas --num-raster-threads=8 --start-maximized --disable-gpu-sandbox --force-device-scale-factor=3"
+GPU_ARGS="--ignore-gpu-blocklist --disable-vulkan --enable-gpu-rasterization --enable-oop-rasterization --canvas-oop-rasterization --gpu-rasterization-msaa-sample-count=0 --enable-zero-copy --use-gl=angle --enable-webgl --enable-accelerated-2d-canvas --num-raster-threads=8 --start-maximized --disable-gpu-sandbox --force-device-scale-factor=3 --enable-smooth-scrolling"
 
 SOFTWARE_MODE=0
 DEBUG_MODE=0
@@ -670,8 +674,8 @@ for arg in "$@"; do
             proot-distro remove debian >/dev/null 2>&1 || true
             echo -e "\033[1;31mRemoving Termux host packages...\033[0m"
             pkg uninstall -y proot-distro termux-x11-nightly >/dev/null 2>&1 || true
-            echo -e "\033[1;31mRemoving patcher scripts...\033[0m"
-            rm -f "$PREFIX/bin/patch_va39.py"
+            echo -e "\033[1;31mRemoving patcher & watchdog scripts...\033[0m"
+            rm -f "$PREFIX/bin/patch_va39.py" "$PREFIX/bin/gem-watchdog"
             echo -e "\033[1;31mRemoving gem launcher...\033[0m"
             rm -f "$PREFIX/bin/gem"
             echo -e "\033[1;31mRemoving Antigravity config and cache...\033[0m"
