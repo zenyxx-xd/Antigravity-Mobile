@@ -420,13 +420,14 @@ fi
 
 if ! pgrep -f "matchbox-window-manager" > /dev/null 2>&1; then matchbox-window-manager -use_titlebar no & sleep 0.2; fi
 
+# Clean up orphaned language_server instances and singleton locks to prevent white screen on auto-restart
+pkill -9 -f "language_server" >/dev/null 2>&1 || true
+rm -rf "$HOME/.config/Antigravity/Singleton*" "$HOME/.config/Antigravity/lockfile" 2>/dev/null || true
+
 # Launch App
 if [ "$DEBUG_MODE" -eq 1 ]; then
     export ELECTRON_ENABLE_LOGGING=1
     export ELECTRON_ENABLE_STACK_DUMPING=1
-    export LIBGL_DEBUG=verbose
-    export MESA_DEBUG=1
-    export EGL_LOG_LEVEL=debug
     exec /opt/antigravity/antigravity --no-sandbox $GPU_ARGS --enable-logging --v=1 --log-level=0 "${ARGS[@]}"
 else
     exec /opt/antigravity/antigravity --no-sandbox $GPU_ARGS "${ARGS[@]}" >/dev/null 2>&1
@@ -559,7 +560,7 @@ while true; do
     fi
     if ! DISPLAY=:0 xdotool search --onlyvisible --class "antigravity" >/dev/null 2>&1; then
         # Visible window is gone but process is alive -> user clicked close button
-        pkill -f "/opt/antigravity/antigravity" >/dev/null 2>&1 || true
+        pkill -f "/opt/antigravity|language_server" >/dev/null 2>&1 || true
         exit 0
     fi
     sleep 2
@@ -580,14 +581,14 @@ cleanup_and_exit() {
     trap - SIGINT SIGTERM
     pkill -f gem-watchdog >/dev/null 2>&1 || true
     pkill -TERM -P $$ 2>/dev/null || true
-    pkill -f "antigravity|matchbox" >/dev/null 2>&1 || true
+    pkill -f "antigravity|matchbox|language_server" >/dev/null 2>&1 || true
     if [ -n "$FIFO_PID" ]; then kill -9 "$FIFO_PID" 2>/dev/null || true; fi
     rm -f "/data/data/com.termux/files/usr/tmp/termux_open_fifo"
     
     # Fast container-side shutdown
     /data/data/com.termux/files/usr/bin/proot \
         --rootfs="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs" \
-        /bin/bash -c "pkill -9 -f 'antigravity'" >/dev/null 2>&1 || true
+        /bin/bash -c "pkill -9 -f 'antigravity|language_server'" >/dev/null 2>&1 || true
     
     echo -e "\n\033[1;38;5;221m  ┌──────────────────────────────────────────────────┐\033[0m"
     echo -e "\033[1;38;5;221m  │ \033[38;5;242mSTATUS         : \033[0m\033[1;38;5;221mSHUTTING DOWN ANTIGRAVITY       \033[1;38;5;221m│\033[0m"
