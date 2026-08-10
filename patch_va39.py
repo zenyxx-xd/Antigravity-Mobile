@@ -3,7 +3,8 @@ import struct
 from pathlib import Path
 import os
 
-bin_path = Path("/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs/opt/antigravity/resources/bin/language_server")
+prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+bin_path = Path(f"{prefix}/var/lib/proot-distro/containers/debian/rootfs/opt/antigravity/resources/bin/language_server")
 bak_path = Path(str(bin_path) + ".bak")
 flag_path = Path(str(bin_path) + ".patched")
 

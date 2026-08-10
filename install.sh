@@ -23,7 +23,7 @@ DIM='\033[2m'
 
 get_cols() {
     local c=""
-    if [ -r /dev/tty ]; then c=$(stty size </dev/tty 2>/dev/null | awk '{print $2}' || true); fi
+    if [ -r /dev/tty ]; then read -r _ c </dev/tty 2>/dev/null || true; fi
     if [ -z "$c" ]; then c=$(tput cols </dev/tty 2>/dev/null || true); fi
     if [ -z "$c" ] || ! [[ "$c" =~ ^[0-9]+$ ]] || [ "$c" -lt 25 ]; then c="${TERM_WIDTH:-${COLUMNS:-50}}"; fi
     if ! [[ "$c" =~ ^[0-9]+$ ]] || [ "$c" -lt 25 ]; then c=50; fi
@@ -165,6 +165,11 @@ apt-get install -y --no-install-recommends matchbox-window-manager curl wget ca-
     libnss3 libnspr4 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libatk1.0-0t64 libcups2t64 libatk-bridge2.0-0t64 \
     libgtk-3-0t64 libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri mesa-vulkan-drivers \
+    dbus dbus-x11 gnome-keyring libsecret-1-0t64 x11-xserver-utils >/dev/null 2>&1 || \
+apt-get install -y --no-install-recommends matchbox-window-manager curl wget ca-certificates tar \
+    libnss3 libnspr4 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libatk1.0-0t64 libcups2t64 libatk-bridge2.0-0t64 \
+    libgtk-3-0t64 libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri mesa-vulkan-drivers \
     dbus dbus-x11 gnome-keyring libsecret-1-0 x11-xserver-utils >/dev/null 2>&1 || true
 
 info "Installing icon and emoji fonts..."
@@ -262,21 +267,14 @@ def resolve_mesa():
 if __name__ == "__main__":
     ag_url, ag_ver = resolve_antigravity()
     mesa_url, mesa_ver = resolve_mesa()
-    print(json.dumps({
-        "antigravity_url": ag_url,
-        "antigravity_version": ag_ver,
-        "mesa_url": mesa_url,
-        "mesa_version": mesa_ver
-    }))
+    print(f"AG_URL='{ag_url}'")
+    print(f"AG_VER='{ag_ver}'")
+    print(f"MESA_URL='{mesa_url}'")
+    print(f"MESA_VER='{mesa_ver}'")
 EOF_RESOLVER
 
-RESOLVED_JSON=$(python3 "$RESOLVER_SCRIPT" 2>/dev/null || echo "{}")
+eval $(python3 "$RESOLVER_SCRIPT" 2>/dev/null || true)
 rm -f "$RESOLVER_SCRIPT"
-
-AG_URL=$(echo "$RESOLVED_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('antigravity_url', ''))" 2>/dev/null || true)
-AG_VER=$(echo "$RESOLVED_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('antigravity_version', ''))" 2>/dev/null || true)
-MESA_URL=$(echo "$RESOLVED_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('mesa_url', ''))" 2>/dev/null || true)
-MESA_VER=$(echo "$RESOLVED_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('mesa_version', ''))" 2>/dev/null || true)
 
 mkdir -p /opt/antigravity
 
@@ -392,12 +390,12 @@ export MESA_LOADER_DRIVER_OVERRIDE=zink
 export TU_DEBUG=sysmem,noconform
 export ZINK_DESCRIPTORS=lazy
 export MESA_VK_WSI_PRESENT_MODE=mailbox
-export MESA_VK_IGNORE_EXTENSIONS="VK_EXT_calibrated_timestamps,VK_KHR_calibrated_timestamps"
+export MESA_VK_IGNORE_EXTENSIONS="VK_EXT_calibrated_timestamps VK_KHR_calibrated_timestamps"
 export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
 export MESA_GLES_VERSION_OVERRIDE=3.2
 export MESA_GLTHREAD=true
 export vblank_mode=0
-GPU_ARGS="--ignore-gpu-blocklist --disable-vulkan --enable-gpu-rasterization --enable-oop-rasterization --canvas-oop-rasterization --gpu-rasterization-msaa-sample-count=0 --enable-zero-copy --use-gl=angle --enable-webgl --enable-accelerated-2d-canvas --num-raster-threads=8 --start-maximized --disable-gpu-sandbox --force-device-scale-factor=3 --enable-smooth-scrolling"
+GPU_ARGS="--ignore-gpu-blocklist --disable-vulkan --enable-gpu-rasterization --enable-oop-rasterization --canvas-oop-rasterization --gpu-rasterization-msaa-sample-count=0 --enable-zero-copy --use-gl=angle --enable-webgl --enable-accelerated-2d-canvas --num-raster-threads=8 --start-maximized --disable-gpu-sandbox --force-device-scale-factor=3 --enable-smooth-scrolling --password-store=gnome-libsecret"
 
 SOFTWARE_MODE=0
 DEBUG_MODE=0
@@ -449,7 +447,8 @@ import struct
 from pathlib import Path
 import os
 
-bin_path = Path("/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs/opt/antigravity/resources/bin/language_server")
+prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+bin_path = Path(f"{prefix}/var/lib/proot-distro/containers/debian/rootfs/opt/antigravity/resources/bin/language_server")
 bak_path = Path(str(bin_path) + ".bak")
 flag_path = Path(str(bin_path) + ".patched")
 
@@ -691,11 +690,14 @@ for arg in "$@"; do
     fi
 done
 
+ROOTFS_DIR="${PREFIX}/var/lib/proot-distro/containers/debian/rootfs"
+SYSDATA_DIR="${PREFIX}/var/lib/proot-distro/containers/debian/sysdata"
+
 PROOT_ARGS=(
     --kill-on-exit --link2symlink --sysvipc
     --kernel-release="Linux localhost 6.17.0-PRoot-Distro #1 SMP PREEMPT_DYNAMIC Fri, 10 Oct 2025 00:00:00 +0000 aarch64 localdomain -1"
     -L --change-id=0:0
-    --rootfs="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs"
+    --rootfs="$ROOTFS_DIR"
     --cwd=/root --bind=/dev --bind=/proc --bind=/sys --bind=/dev/urandom:/dev/random
 )
 
@@ -705,7 +707,6 @@ for i in 0 1 2; do
     if [ ! -L "/dev/$name" ] && [ -e "/proc/self/fd/$i" ]; then PROOT_ARGS+=(--bind=/proc/self/fd/$i:/dev/$name); fi
 done
 
-SYSDATA_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/sysdata"
 PROOT_ARGS+=(
     --bind="$SYSDATA_DIR/sys_empty:/sys/fs/selinux"
     --bind="$SYSDATA_DIR/loadavg:/proc/loadavg"
@@ -720,9 +721,9 @@ PROOT_ARGS+=(
 )
 
 PROOT_ARGS+=(
-    --bind="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs/tmp:/dev/shm"
-    --bind="/data/data/com.termux/files/usr/tmp:/tmp"
-    --bind="/data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix"
+    --bind="$ROOTFS_DIR/tmp:/dev/shm"
+    --bind="$PREFIX/tmp:/tmp"
+    --bind="$PREFIX/tmp/.X11-unix:/tmp/.X11-unix"
 )
 
 for p in /data/app /data/dalvik-cache /data/misc/apexdata/com.android.art/dalvik-cache /apex /odm /product /system /system_ext /vendor /linkerconfig/ld.config.txt /linkerconfig/com.android.art/ld.config.txt; do
